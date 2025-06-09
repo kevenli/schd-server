@@ -9,3 +9,11 @@ class JobModel(SQLModel, table=True):
     active: bool
     cron: Optional[str]
     worker_id: Optional[str]
+
+
+class WorkerModel(SQLModel, table=True):
+    __tablename__ = 'workers'
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    status: str
