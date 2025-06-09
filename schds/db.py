@@ -11,7 +11,7 @@ def init_db(database_url):
         # return engine
         raise RuntimeError("engine already initiated.")
     
-    engine = create_engine(database_url, echo=True)
+    engine = create_engine(database_url, echo=False)
     # SQLModel.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine, class_=Session)
     return engine
