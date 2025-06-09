@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import signal
 import tornado
 
@@ -38,8 +39,6 @@ class RegisterWorkerHandler(JSONHandler):
         new_worker = scheduler.update_worker(name)
         self._return_response(self, {'id': new_worker.id,'name':new_worker.name}, 200)
 
-    
-
 
 class RegisterJobHandler(JSONHandler):
     """
@@ -60,7 +59,7 @@ def make_app(scheduler):
     return tornado.web.Application([
         (r"/", MainHandler),
         (r"/api/workers", RegisterWorkerHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{2,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{2,35})", RegisterJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})", RegisterJobHandler),
     ], scheduler=scheduler)
 
 
@@ -95,6 +94,7 @@ class SchdServer:
 
 async def main():
     server_config = read_config()
+    logging.basicConfig(level=logging.INFO)
     server = SchdServer(server_config)
     await server.run()
 

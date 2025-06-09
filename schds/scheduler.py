@@ -1,6 +1,9 @@
+import logging
 from schds.db import engine, init_db, get_session, SessionLocal
 from sqlmodel import Session, select
 from schds.models import WorkerModel, JobModel
+
+logger = logging.getLogger(__name__)
 
 
 class SchdsScheduler:
@@ -25,7 +28,7 @@ class SchdsScheduler:
             if worker is None:
                 raise ValueError('worker not found.')
 
-            statement = select(JobModel).where(JobModel.worker_id == worker.id)
+            statement = select(JobModel).where(JobModel.worker_id == worker.id, JobModel.name == job_name)
             result = session.exec(statement)
             job = result.first()
             if not job:
@@ -33,5 +36,6 @@ class SchdsScheduler:
 
             session.add(job)
             session.commit()
+            logger.info('job added, %s-%s', worker_name, job_name)
             session.refresh(job)
             return job
