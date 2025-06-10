@@ -11,7 +11,7 @@ import tornado.websocket
 from schds.config import read_config
 from schds.models import JobInstanceModel
 from schds.scheduler import SchdsScheduler
-from schds.db import init_db
+from schds.db import init_db, upgrade_database
 
 logger = logging.getLogger(__name__)
 
@@ -192,19 +192,20 @@ def make_app(scheduler):
     return tornado.web.Application([
         (r"/", MainHandler),
         (r"/api/workers", RegisterWorkerHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})", RegisterJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35}):fire", FireJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})/(?P<job_instance_id>\d+)", UpdateJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})/(?P<job_instance_id>\d+)/log", UpdateInstanceLogHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/eventstream", WorkerEventsHandler),
-        (r"/wsapi/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/events", WorkerWSEventsHandler), 
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})", RegisterJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35}):fire", FireJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/(?P<job_instance_id>\d+)", UpdateJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/(?P<job_instance_id>\d+)/log", UpdateInstanceLogHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/eventstream", WorkerEventsHandler),
+        (r"/wsapi/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/events", WorkerWSEventsHandler), 
     ], scheduler=scheduler)
 
 
 class SchdServer:
     def __init__(self, config):
         self._config = config
-        init_db(config.db_url)
+        # init_db(config.db_url)
+        upgrade_database(config.db_url)
         self._scheduler = SchdsScheduler()
         self._scheduler.start()
         self._app = make_app(scheduler=self._scheduler)
@@ -218,7 +219,7 @@ class SchdServer:
         stop_event = asyncio.Event()
 
         def handle_signal(signum, frame):
-            print(f"Received signal {signum}, shutting down...")
+            print("Received shutdown signal")
             stop_event.set()
 
         # for sig in (signal.SIGINT, signal.SIGTERM):
