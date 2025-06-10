@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import signal
 import sys
 import tornado
@@ -69,13 +70,25 @@ class WorkerEventsHandler(tornado.web.RequestHandler):
         self.flush()
         logger.info(f"SSE connection opened for {self.worker_name}")
         scheduler:"SchdsScheduler" = self.settings['scheduler']
+        self.queue = asyncio.Queue()
         scheduler.subscribe_worker_events(worker_name, self)
+        await self.send_events()
 
-        queue = scheduler.get_worker_event_queue(worker_name)
+    def send_job_instance_event(self, worker, job, job_instance):
+        logger.info('send_job_instance_event, %s, %s, %s', worker, job, job_instance)
+        self.queue.put_nowait(job_instance)
+
+    async def send_events(self):
         self.running = True
         while self.running:
-            event = await queue.get()
-            logger.info('got event %s, %s', worker_name, event)
+            try:
+                # to prevent trying from a died connection forever, get with a TIMEOUT
+                event = await asyncio.wait_for(self.queue.get(), timeout=10)
+            except asyncio.TimeoutError:
+                continue
+
+            # event = await self.queue.get()
+            logger.info('got event %s, %s', self.worker_name, event)
             if isinstance(event, JobInstanceModel):
                 self.write({
                     'event_type': 'NewJobInstance',
@@ -89,25 +102,6 @@ class WorkerEventsHandler(tornado.web.RequestHandler):
                 self.flush()
             else:
                 logger.error('unknown event type')
-
-        # self.running = True
-        # self.send_events()
-
-    def send_job_instance_event(self, worker, job, job_instance):
-        logger.info('send_job_instance_event, %s, %s, %s', worker, job, job_instance)
-
-    async def send_events(self):
-        count = 0
-        while self.running:
-            await tornado.gen.sleep(1)
-            data = f"data: Event {count} from {self.worker_name}\n\n"
-            try:
-                self.write(data)
-                await self.flush()
-                count += 1
-            except tornado.iostream.StreamClosedError:
-                logger.info(f"Client for {self.worker_name} disconnected")
-                self.running = False
 
     def on_connection_close(self):
         logger.info(f"Connection closed for worker {self.worker_name}")
@@ -126,6 +120,49 @@ class FireJobHandler(JSONHandler):
         self._return_response(self, {
             'id': new_job_instance.id,
         }, 200)
+
+
+class UpdateJobHandler(JSONHandler):
+    def put(self, worker_name, job_name, job_instance_id):
+        scheduler:"SchdsScheduler" = self.settings['scheduler']
+        job_instance = scheduler.get_job_instance(worker_name, job_name, job_instance_id)
+
+        request_payload:dict = tornado.escape.json_decode(self.request.body)
+        status = request_payload['status']
+        if status == 'RUNNING':
+            new_instance = scheduler.start_job_instance(job_instance, new_status=status)
+            self._return_response(self, {'id': new_instance.id, 'status': new_instance.status}, 200)
+        elif status == 'COMPLETED':
+            new_instance = scheduler.complete_job_instance(job_instance, status, request_payload['ret_code'])
+            self._return_response(self, {'id': new_instance.id, 'status': new_instance.status}, 200)
+        else:
+            raise ValueError('invalid status')
+        
+
+class UpdateInstanceLogHandler(tornado.web.RequestHandler):
+    def put(self, worker_name, job_name, job_instance_id):
+        scheduler:"SchdsScheduler" = self.settings['scheduler']
+        files = self.request.files.get("logfile", [])
+
+        job_instance = scheduler.get_job_instance(worker_name, job_name, job_instance_id)
+        if job_instance.status != 'RUNNING':
+            raise ValueError('job instace is not running, cannot commit log file.')
+        
+        assert len(files) == 1
+
+        for fileinfo in files:
+            filename = fileinfo["filename"]
+            body = fileinfo["body"]
+
+            job_dir = f'joblog/{job_instance_id}'
+            if not os.path.exists(job_dir):
+                os.makedirs(job_dir)
+
+            job_filepath = os.path.join(job_dir, 'output.txt')
+            with open(job_filepath, "wb") as f:
+                f.write(body)
+
+            self.write(f"Saved {filename} to {job_filepath}\n")
 
 
 class WorkerWSEventsHandler(tornado.websocket.WebSocketHandler):
@@ -157,6 +194,8 @@ def make_app(scheduler):
         (r"/api/workers", RegisterWorkerHandler),
         (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})", RegisterJobHandler),
         (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35}):fire", FireJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})/(?P<job_instance_id>\d+)", UpdateJobHandler),
+        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9]{0,35})/(?P<job_instance_id>\d+)/log", UpdateInstanceLogHandler),
         (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/eventstream", WorkerEventsHandler),
         (r"/wsapi/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9]{0,35})/events", WorkerWSEventsHandler), 
     ], scheduler=scheduler)

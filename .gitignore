@@ -194,3 +194,4 @@ cython_debug/
 .cursorindexingignore
 /conf/*
 /*.sqlite3
+/joblog
