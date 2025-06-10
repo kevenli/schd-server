@@ -218,7 +218,7 @@ class SchdServer:
 
         stop_event = asyncio.Event()
 
-        def handle_signal(signum, frame):
+        def handle_signal():
             print("Received shutdown signal")
             stop_event.set()
 
