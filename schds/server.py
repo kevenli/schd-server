@@ -7,7 +7,7 @@ import tornado
 import tornado.web
 import tornado.websocket
 
-from schds.config import read_config
+from schds.config import read_config, SchdsConfig
 from schds.models import JobInstanceModel
 from schds.scheduler import SchdsScheduler, WorkerAlreadyOnlineException
 from schds.db import init_db, upgrade_database
@@ -210,6 +210,9 @@ def make_app(scheduler):
 class SchdServer:
     def __init__(self, config):
         self._config = config
+
+        if not os.path.exists('data'):
+            os.makedirs('data')
         # init_db(config.db_url)
         upgrade_database(config.db_url)
         self._scheduler = SchdsScheduler()
