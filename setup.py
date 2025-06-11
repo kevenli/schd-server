@@ -10,6 +10,13 @@ setup(
     version="0.0.1",
     url="https://github.com/kevenli/schd-server",
     packages=find_packages(exclude=('tests', 'tests.*')),
+    package_data={
+        'schds': [
+            'migrations/*', 
+            'migrations/versions/*', 
+        ]
+    },
+    include_package_data=True,
     install_requires=read_requirements(),
     license="ApacheV2",
     license_files="LICENSE",

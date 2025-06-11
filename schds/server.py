@@ -219,8 +219,8 @@ class SchdServer:
         
     async def run(self):
         http_port=8899
-        self._http_server = server = self._app.listen(http_port)
-        print(f"Server started on http://localhost:{http_port}")
+        self._http_server = server = self._app.listen(http_port, address="0.0.0.0")
+        logger.info(f"Server started on http://localhost:{http_port}")
 
         stop_event = asyncio.Event()
 
@@ -234,9 +234,10 @@ class SchdServer:
         loop = asyncio.get_event_loop()
         try:
             loop.add_signal_handler(signal.SIGINT, handle_signal)
+            loop.add_signal_handler(signal.SIGTERM, handle_signal)
         except NotImplementedError:
             # On Windows, fallback: handle KeyboardInterrupt manually
-            pass
+            logger.warning('loop.add_signal_handler not implemented')
 
         await stop_event.wait()
         server.stop()
@@ -245,7 +246,7 @@ class SchdServer:
 
 async def main():
     server_config = read_config()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     server = SchdServer(server_config)
     await server.run()
 
