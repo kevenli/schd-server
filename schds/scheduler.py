@@ -35,7 +35,7 @@ class SchdsScheduler:
                     logger.info('invalid cron expression, %s, job.id: %d', job.cron, job.id)
                     continue
 
-                self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name})
+                self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=str(job.id))
 
         self._inner_scheduler.start()
 
@@ -56,6 +56,13 @@ class SchdsScheduler:
             worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
             if worker is None:
                 raise ValueError('worker not found.')
+            
+            try:
+                cron_trigger = CronTrigger.from_crontab(cron)
+            except ValueError:
+                # invalid cron
+                logger.info('invalid cron expression, %s', cron)
+                raise
 
             statement = select(JobModel).where(JobModel.worker_id == worker.id, JobModel.name == job_name)
             result = session.exec(statement)
@@ -65,8 +72,15 @@ class SchdsScheduler:
 
             session.add(job)
             session.commit()
-            logger.info('job added, %s-%s', worker_name, job_name)
             session.refresh(job)
+            logger.info('job added, %s-%s', worker_name, job_name)
+
+            job_id = str(job.id)
+            exist_job = self._inner_scheduler.get_job(job_id=job_id)
+            if exist_job:
+                self._inner_scheduler.remove_job(job_id=job_id)
+
+            self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=job_id)
             return job
 
     def subscribe_worker_events(self, worker_name, subscriber):
