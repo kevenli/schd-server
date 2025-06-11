@@ -10,7 +10,7 @@ import tornado.websocket
 
 from schds.config import read_config
 from schds.models import JobInstanceModel
-from schds.scheduler import SchdsScheduler
+from schds.scheduler import SchdsScheduler, WorkerAlreadyOnlineException
 from schds.db import init_db, upgrade_database
 
 logger = logging.getLogger(__name__)
@@ -64,16 +64,21 @@ class RegisterJobHandler(JSONHandler):
 class WorkerEventsHandler(tornado.web.RequestHandler):
     async def prepare(self):
         worker_name = self.worker_name = self.path_kwargs["worker_name"]
-        self.set_header("Content-Type", "text/event-stream")
-        self.set_header("Cache-Control", "no-cache")
-        self.set_header("Connection", "keep-alive")
-        self.flush()
-        logger.info(f"SSE connection opened for {self.worker_name}")
         scheduler:"SchdsScheduler" = self.settings['scheduler']
         self.queue = asyncio.Queue()
-        scheduler.subscribe_worker_events(worker_name, self)
-        await self.send_events()
 
+        try:
+            scheduler.subscribe_worker_events(worker_name, self)
+            self.set_header("Content-Type", "text/event-stream")
+            self.set_header("Cache-Control", "no-cache")
+            self.set_header("Connection", "keep-alive")
+            self.flush()
+            logger.info(f"SSE connection opened for {self.worker_name}")
+            await self.send_events()
+        except WorkerAlreadyOnlineException:
+            self.set_status(409, 'worker already online')
+            return self.write_error(409)
+        
     def send_job_instance_event(self, worker, job, job_instance):
         logger.info('send_job_instance_event, %s, %s, %s', worker, job, job_instance)
         self.queue.put_nowait(job_instance)

@@ -15,6 +15,9 @@ from schds.models import JobInstanceModel, WorkerModel, JobModel
 logger = logging.getLogger(__name__)
 
 
+class WorkerAlreadyOnlineException(Exception):...
+
+
 class SchdsScheduler:
     def __init__(self):
         self.worker_event_subscribers:Dict[str,list] = defaultdict(list)
@@ -67,6 +70,10 @@ class SchdsScheduler:
             return job
 
     def subscribe_worker_events(self, worker_name, subscriber):
+        if len(self.worker_event_subscribers[worker_name]) >= 1:
+            # do not support more than one subscription at the time.
+            raise WorkerAlreadyOnlineException()
+        
         self.worker_event_subscribers[worker_name].append(subscriber)
         with get_session() as session:
             worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
