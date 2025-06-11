@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import signal
@@ -39,12 +38,10 @@ class JSONHandler(tornado.web.RequestHandler):
 
 
 class RegisterWorkerHandler(JSONHandler):
-    def post(self):
-        request_payload = tornado.escape.json_decode(self.request.body)
-        name = request_payload['name']
+    def put(self, worker_name):
         scheduler:"SchdsScheduler" = self.settings['scheduler']
-        new_worker = scheduler.update_worker(name)
-        self._return_response(self, {'id': new_worker.id,'name':new_worker.name}, 200)
+        new_worker = scheduler.update_worker(worker_name)
+        self._return_response(self, {'name':new_worker.name}, 200)
 
 
 class RegisterJobHandler(JSONHandler):
@@ -194,15 +191,19 @@ class WorkerWSEventsHandler(tornado.websocket.WebSocketHandler):
 
 
 def make_app(scheduler):
+    worker_name_ptrn = r'(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})'
+    job_name_ptrn = r'(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})'
+    job_instance_ptrn = r'(?P<job_instance_id>\d+)'
+
     return tornado.web.Application([
         (r"/", MainHandler),
-        (r"/api/workers", RegisterWorkerHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})", RegisterJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35}):fire", FireJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/(?P<job_instance_id>\d+)", UpdateJobHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/jobs/(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/(?P<job_instance_id>\d+)/log", UpdateInstanceLogHandler),
-        (r"/api/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/eventstream", WorkerEventsHandler),
-        (r"/wsapi/workers/(?P<worker_name>[a-zA-Z][a-zA-Z0-9_]{0,35})/events", WorkerWSEventsHandler), 
+        (f"/api/workers/{worker_name_ptrn}", RegisterWorkerHandler),
+        (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}", RegisterJobHandler),
+        (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}:fire", FireJobHandler),
+        (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/{job_instance_ptrn}", UpdateJobHandler),
+        (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/{job_instance_ptrn}/log", UpdateInstanceLogHandler),
+        (f"/api/workers/{worker_name_ptrn}/eventstream", WorkerEventsHandler),
+        (f"/wsapi/workers/{worker_name_ptrn}/events", WorkerWSEventsHandler), 
     ], scheduler=scheduler)
 
 
