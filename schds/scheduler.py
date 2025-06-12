@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from schds.db import get_session
 from schds.models import JobInstanceModel, WorkerModel, JobModel
+from pytz import timezone as ZoneInfo
 
 
 logger = logging.getLogger(__name__)
@@ -25,19 +26,23 @@ class SchdsScheduler:
         
     def start(self):
         self._inner_scheduler = AsyncIOScheduler()
+        # to know job next_run_time, it has to start scheduler first.
+        self._inner_scheduler.start()
         with get_session() as session:
             for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
                 worker = session.exec(select(WorkerModel).where(WorkerModel.id == job.worker_id)).first()
                 try:
-                    cron_trigger = CronTrigger.from_crontab(job.cron)
+                    job_timezone = None
+                    if job.timezone:
+                        job_timezone = ZoneInfo(job.timezone)
+                    cron_trigger = CronTrigger.from_crontab(job.cron, timezone=job_timezone)
                 except ValueError:
                     # invalid cron
                     logger.info('invalid cron expression, %s, job.id: %d', job.cron, job.id)
                     continue
 
-                self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=str(job.id))
-
-        self._inner_scheduler.start()
+                job_obj = self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=str(job.id))
+                logger.info('job added %s, next wakeup time %s', job.id, job_obj.next_run_time)
 
     def update_worker(self, name):
         with get_session() as session:
@@ -51,14 +56,17 @@ class SchdsScheduler:
             session.refresh(worker)
             return worker
         
-    def add_job(self, worker_name, job_name, cron):
+    def add_job(self, worker_name, job_name, cron, timezone=None):
         with get_session() as session:
             worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
             if worker is None:
                 raise ValueError('worker not found.')
             
             try:
-                cron_trigger = CronTrigger.from_crontab(cron)
+                job_timezone = None
+                if timezone:
+                    job_timezone = ZoneInfo(timezone)
+                cron_trigger = CronTrigger.from_crontab(cron, job_timezone)
             except ValueError:
                 # invalid cron
                 logger.info('invalid cron expression, %s', cron)
@@ -68,8 +76,11 @@ class SchdsScheduler:
             result = session.exec(statement)
             job = result.first()
             if not job:
-                job =JobModel(name=job_name, cron=cron, worker_id=worker.id, active=True)
+                job =JobModel(name=job_name, cron=cron, worker_id=worker.id, active=True, timezone=timezone)
 
+            job.cron = cron
+            job.timezone = timezone
+            job.active = True
             session.add(job)
             session.commit()
             session.refresh(job)
@@ -80,7 +91,8 @@ class SchdsScheduler:
             if exist_job:
                 self._inner_scheduler.remove_job(job_id=job_id)
 
-            self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=job_id)
+            job_obj = self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=job_id)
+            logger.info('job added %s, next wakeup time %s', job_id, job_obj.next_run_time)
             return job
 
     def subscribe_worker_events(self, worker_name, subscriber):

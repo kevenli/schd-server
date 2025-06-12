@@ -10,6 +10,7 @@ class JobModel(SQLModel, table=True):
     active: bool
     cron: Optional[str]
     worker_id: Optional[str]
+    timezone: Optional[str]
 
 
 class WorkerModel(SQLModel, table=True):

@@ -51,11 +51,14 @@ class RegisterJobHandler(JSONHandler):
     def put(self, worker_name, job_name):
         request_payload:dict = tornado.escape.json_decode(self.request.body)
         cron = request_payload.get('cron')
+        cron_timezone = request_payload.get('cron_timezone')
         scheduler:"SchdsScheduler" = self.settings['scheduler']
-        new_job = scheduler.add_job(worker_name, job_name, cron)
+        new_job = scheduler.add_job(worker_name, job_name, cron, timezone=cron_timezone)
         return self._return_response(self, {
-            'id': new_job.id, 
             'name': new_job.name,
+            'cron': new_job.cron,
+            'timezone': new_job.timezone,
+            'active': new_job.active,
         }, 200)
 
 class WorkerEventsHandler(tornado.web.RequestHandler):
