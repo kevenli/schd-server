@@ -1,0 +1,3 @@
+v0.0.2:
+* add job.timezone
+* log output newly added job next_run_time
