@@ -2,7 +2,7 @@ import asyncio
 from collections import defaultdict
 from datetime import datetime
 import logging
-from typing import Dict
+from typing import Dict, List
 
 from sqlmodel import select
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,30 +19,48 @@ logger = logging.getLogger(__name__)
 class WorkerAlreadyOnlineException(Exception):...
 
 
+class JobResultTrigger:
+    on_job_id: int # observer on which job
+    on_job: JobModel # observer on which job
+    on_job_result_status: str # on which status this can trigger  [ANY] | COMPLETED | FAILED
+    fire_job:JobModel
+    fire_job_id: int
+
+
 class SchdsScheduler:
     def __init__(self):
         self.worker_event_subscribers:Dict[str,list] = defaultdict(list)
-        self._inner_scheduler = None
+        self._inner_scheduler = AsyncIOScheduler()
+        self.job_result_triggers:Dict[int, List[JobResultTrigger]] = defaultdict(list)
         
     def start(self):
-        self._inner_scheduler = AsyncIOScheduler()
         # to know job next_run_time, it has to start scheduler first.
         self._inner_scheduler.start()
         with get_session() as session:
             for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
-                worker = session.exec(select(WorkerModel).where(WorkerModel.id == job.worker_id)).first()
-                try:
-                    job_timezone = None
-                    if job.timezone:
-                        job_timezone = ZoneInfo(job.timezone)
-                    cron_trigger = CronTrigger.from_crontab(job.cron, timezone=job_timezone)
-                except ValueError:
-                    # invalid cron
-                    logger.info('invalid cron expression, %s, job.id: %d', job.cron, job.id)
-                    continue
+                self._schedule_job(job)
 
-                job_obj = self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=str(job.id))
-                logger.info('job added %s, next wakeup time %s', job.id, job_obj.next_run_time)
+    def _schedule_job(self, job:JobModel):
+        job_id = str(job.id)
+        exist_job = self._inner_scheduler.get_job(job_id=job_id)
+        if exist_job:
+            self._inner_scheduler.remove_job(job_id=job_id)
+
+        if not job.cron:
+            return
+        
+        try:
+            job_timezone = None
+            if job.timezone:
+                job_timezone = ZoneInfo(job.timezone)
+            cron_trigger = CronTrigger.from_crontab(job.cron, timezone=job_timezone)
+        except ValueError:
+            # invalid cron
+            logger.error('invalid cron expression, %s, job.id: %d', job.cron, job.id)
+            return
+
+        job_obj = self._inner_scheduler.add_job(self.fire_job2, cron_trigger, kwargs={'job':job}, id=job_id)
+        logger.info('job added %s, next wakeup time %s', job.id, job_obj.next_run_time)
 
     def update_worker(self, name):
         with get_session() as session:
@@ -66,7 +84,8 @@ class SchdsScheduler:
                 job_timezone = None
                 if timezone:
                     job_timezone = ZoneInfo(timezone)
-                cron_trigger = CronTrigger.from_crontab(cron, job_timezone)
+                if cron:
+                    _ = CronTrigger.from_crontab(cron, job_timezone) # try parse cron expression before saving.
             except ValueError:
                 # invalid cron
                 logger.info('invalid cron expression, %s', cron)
@@ -86,13 +105,7 @@ class SchdsScheduler:
             session.refresh(job)
             logger.info('job added, %s-%s', worker_name, job_name)
 
-            job_id = str(job.id)
-            exist_job = self._inner_scheduler.get_job(job_id=job_id)
-            if exist_job:
-                self._inner_scheduler.remove_job(job_id=job_id)
-
-            job_obj = self._inner_scheduler.add_job(self.fire_job, cron_trigger, kwargs={'worker_name': worker.name, 'job_name':job.name}, id=job_id)
-            logger.info('job added %s, next wakeup time %s', job_id, job_obj.next_run_time)
+            self._schedule_job(job)
             return job
 
     def subscribe_worker_events(self, worker_name, subscriber):
@@ -124,6 +137,31 @@ class SchdsScheduler:
             job = session.exec(select(JobModel).where(JobModel.name == job_name, JobModel.worker_id == worker.id)).first()
             if job is None:
                 raise ValueError('job not found.')
+            
+            inqueue_instances = session.exec(select(JobInstanceModel).where(JobInstanceModel.worker_id == worker.id,
+                                                                             JobInstanceModel.job_id == job.id,
+                                                                             JobInstanceModel.status == 'INQUEUE')).all()
+            if len(inqueue_instances) >= 1:
+                # by default, there will not be more than 1 instance for each job in the queue.
+                logger.info('there are already %d instance of job %d, skip.', len(inqueue_instances), job.id)
+                return inqueue_instances[-1]
+            
+            job_instance = JobInstanceModel(worker_id=worker.id,
+                                            job_id=job.id,
+                                            status='INQUEUE',
+                                            job_name=job.name,
+                                            start_time=datetime.now())
+            session.add(job_instance)
+            session.commit()
+            session.refresh(job_instance)
+            for subscriber in self.worker_event_subscribers[worker.name]:
+                subscriber.send_job_instance_event(worker, job, job_instance)
+            return job_instance
+
+    def fire_job2(self, job:JobModel) -> JobInstanceModel:
+        logger.info('fire job %d-%s %s', job.id, job.worker_id, job.name)
+        with get_session() as session:
+            worker = session.exec(select(WorkerModel).where(WorkerModel.id == int(job.worker_id))).first()
             
             inqueue_instances = session.exec(select(JobInstanceModel).where(JobInstanceModel.worker_id == worker.id,
                                                                              JobInstanceModel.job_id == job.id,
@@ -192,4 +230,24 @@ class SchdsScheduler:
             session.add(obj)
             session.commit()
             session.refresh(obj)
+
+            for trigger in self.job_result_triggers[job_instance.job_id]:
+                self.fire_job2(trigger.fire_job)
+
             return obj
+
+    def add_job_result_trigger(self, on_job:JobModel, fire_job:JobModel, on_job_result_status:str):
+        if not on_job_result_status in ['[ANY]', 'COMPLETED', 'FAILED']:
+            raise ValueError('invalid status')
+
+        trigger = JobResultTrigger()
+        trigger.on_job = on_job
+        trigger.on_job_id = on_job.id
+        trigger.fire_job_id = fire_job.id
+        trigger.fire_job = fire_job
+        trigger.on_job_result_status = on_job_result_status
+        existing_triggers = filter(lambda t: t.fire_job.id == fire_job.id, self.job_result_triggers[on_job.id])
+        for existing_trigger in existing_triggers:
+            self.job_result_triggers[on_job.id].remove(existing_trigger)
+
+        self.job_result_triggers[on_job.id].append(trigger)
