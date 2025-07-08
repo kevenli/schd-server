@@ -1,7 +1,8 @@
 import os
 from typing import List, Union
 import unittest
-from schds.db import upgrade_database
+from schds.db import upgrade_database, init_db, create_tables
+import schds.db as db
 from schds.scheduler import SchdsScheduler
 from schds.models import WorkerModel, JobModel, JobInstanceModel
 
@@ -18,7 +19,8 @@ class SchdsSchedulerJobResultTriggerTest(unittest.TestCase):
         if os.path.exists('tests/schds_test.db'):
             os.remove('tests/schds_test.db')
 
-        upgrade_database('tests/schds_test.db')
+        init_db('sqlite:///tests/schds_test.db')
+        # create_tables(db.engine)
 
     def test_add_job_result_trigger(self):
         target = SchdsScheduler()

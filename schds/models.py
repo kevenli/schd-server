@@ -33,3 +33,7 @@ class JobInstanceModel(SQLModel, table=True):
     actual_start_time: Optional[datetime]
     stop_time: Optional[datetime]
     ret_code: Optional[int]
+
+def create_tables(engine):
+    SQLModel.metadata.create_all(engine)
+    
