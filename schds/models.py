@@ -40,9 +40,8 @@ class JobStatusTriggerModel(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     on_job_id: int
     on_job_status: str
-    trigger_job_id: int
+    fire_job_id: int
 
 
 def create_tables(engine):
     SQLModel.metadata.create_all(engine)
-    

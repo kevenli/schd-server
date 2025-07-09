@@ -220,6 +220,7 @@ class SchdServer:
         init_db(config.db_url)
         # upgrade_database(config.db_url)
         self._scheduler = SchdsScheduler()
+        self._scheduler.init()
         self._scheduler.start()
         self._app = make_app(scheduler=self._scheduler)
         self._http_server = None

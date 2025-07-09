@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from schds.db import get_session
-from schds.models import JobInstanceModel, WorkerModel, JobModel
+from schds.models import JobInstanceModel, JobStatusTriggerModel, WorkerModel, JobModel
 from pytz import timezone as ZoneInfo
 
 
@@ -21,7 +21,7 @@ class WorkerAlreadyOnlineException(Exception):...
 
 class JobResultTrigger:
     on_job_id: int # observer on which job
-    on_job: JobModel # observer on which job
+    # on_job: JobModel # observer on which job
     on_job_result_status: str # on which status this can trigger  [ANY] | COMPLETED | FAILED
     fire_job:JobModel
     fire_job_id: int
@@ -32,13 +32,24 @@ class SchdsScheduler:
         self.worker_event_subscribers:Dict[str,list] = defaultdict(list)
         self._inner_scheduler = AsyncIOScheduler()
         self.job_result_triggers:Dict[int, List[JobResultTrigger]] = defaultdict(list)
+        self._jobs:Dict[int, JobModel] = dict()
         
+    def init(self):
+        with get_session() as session:
+            for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
+                self._jobs[job.id] = job
+
+                self._schedule_job(job)
+
+            for job_status_trigger in session.exec(select(JobStatusTriggerModel)).all():
+                self.place_job_result_trigger(job_status_trigger)
+
     def start(self):
         # to know job next_run_time, it has to start scheduler first.
         self._inner_scheduler.start()
-        with get_session() as session:
-            for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
-                self._schedule_job(job)
+        # with get_session() as session:
+        #     for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
+        #         self._schedule_job(job)
 
     def _schedule_job(self, job:JobModel):
         job_id = str(job.id)
@@ -103,6 +114,7 @@ class SchdsScheduler:
             session.add(job)
             session.commit()
             session.refresh(job)
+            self._jobs[job.id] = job
             logger.info('job added, %s-%s', worker_name, job_name)
 
             self._schedule_job(job)
@@ -236,17 +248,53 @@ class SchdsScheduler:
                     self.fire_job2(trigger.fire_job)
 
             return obj
+        
+    def find_job(self, worker_name:str, job_name:str) -> JobModel:
+        with get_session() as session:
+            worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
+            if worker is None:
+                raise ValueError('worker not found.')
+            
+            job = session.exec(select(JobModel).where(JobModel.worker_id==worker.id, JobModel.name == job_name)).first()
+            return job
+        
+    def get_job(self, job_id:int) -> JobModel:
+        return self._jobs.get(job_id)
 
     def add_job_result_trigger(self, on_job:JobModel, fire_job:JobModel, on_job_result_status:str):
         if not on_job_result_status in ['[ANY]', 'COMPLETED', 'FAILED']:
             raise ValueError('invalid status')
 
+        with get_session() as session:
+            trigger_model = JobStatusTriggerModel(on_job_id=on_job.id, fire_job_id=fire_job.id, on_job_status=on_job_result_status)
+            session.add(trigger_model)
+            session.commit()
+            session.refresh(trigger_model)
+
+            self.place_job_result_trigger(trigger_model)
+
+            return trigger_model
+        # trigger = JobResultTrigger()
+        # # trigger.on_job = on_job
+        # trigger.on_job_id = on_job.id
+        # trigger.fire_job_id = fire_job.id
+        # trigger.fire_job = fire_job
+        # trigger.on_job_result_status = on_job_result_status
+        # existing_triggers = filter(lambda t: t.fire_job.id == fire_job.id, self.job_result_triggers[on_job.id])
+        # for existing_trigger in existing_triggers:
+        #     self.job_result_triggers[on_job.id].remove(existing_trigger)
+
+        # self.job_result_triggers[on_job.id].append(trigger)
+
+    def place_job_result_trigger(self, trigger_model: JobStatusTriggerModel):
         trigger = JobResultTrigger()
-        trigger.on_job = on_job
+        on_job = self.get_job(trigger_model.on_job_id)
+        fire_job = self.get_job(trigger_model.fire_job_id)
+        # trigger.on_job = on_job
         trigger.on_job_id = on_job.id
         trigger.fire_job_id = fire_job.id
         trigger.fire_job = fire_job
-        trigger.on_job_result_status = on_job_result_status
+        trigger.on_job_result_status = trigger_model.on_job_status
         existing_triggers = filter(lambda t: t.fire_job.id == fire_job.id, self.job_result_triggers[on_job.id])
         for existing_trigger in existing_triggers:
             self.job_result_triggers[on_job.id].remove(existing_trigger)

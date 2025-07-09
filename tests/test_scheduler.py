@@ -25,6 +25,7 @@ class SchdsSchedulerJobResultTriggerTest(unittest.TestCase):
 
     def test_add_job_result_trigger(self):
         target = SchdsScheduler()
+        target.init()
         worker_name = 'worker'
         worker = target.update_worker(worker_name)
         observer = SchdsSchedulerJobResultTriggerTest.WorkerObserver()
