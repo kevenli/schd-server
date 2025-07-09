@@ -232,7 +232,8 @@ class SchdsScheduler:
             session.refresh(obj)
 
             for trigger in self.job_result_triggers[job_instance.job_id]:
-                self.fire_job2(trigger.fire_job)
+                if trigger.on_job_result_status == '[ANY]' or trigger.on_job_result_status == new_status:
+                    self.fire_job2(trigger.fire_job)
 
             return obj
 
