@@ -6,7 +6,7 @@ from schds.models import create_tables
 engine = None
 SessionLocal = None
 
-def init_db(database_url):
+def init_db(database_url, auto_upgrade=True):
     global engine
     global SessionLocal
     if engine is not None:
@@ -16,11 +16,14 @@ def init_db(database_url):
     engine = create_engine(database_url, echo=False)
     # SQLModel.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine, class_=Session)
-    if database_url.startswith('sqlite'):
-        # sqlite database does not support scheme migration, create directly.
-        create_tables(engine)
-    else:
+    # if database_url.startswith('sqlite'):
+    #     # sqlite database does not support scheme migration, create directly.
+    #     create_tables(engine)
+    # else:
+    #     upgrade_database(database_url)
+    if auto_upgrade:
         upgrade_database(database_url)
+        
     return engine
 
 def get_session():

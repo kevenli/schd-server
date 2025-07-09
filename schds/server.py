@@ -217,8 +217,8 @@ class SchdServer:
 
         if not os.path.exists('data'):
             os.makedirs('data')
-        # init_db(config.db_url)
-        upgrade_database(config.db_url)
+        init_db(config.db_url)
+        # upgrade_database(config.db_url)
         self._scheduler = SchdsScheduler()
         self._scheduler.start()
         self._app = make_app(scheduler=self._scheduler)
