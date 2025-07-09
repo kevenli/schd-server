@@ -34,6 +34,15 @@ class JobInstanceModel(SQLModel, table=True):
     stop_time: Optional[datetime]
     ret_code: Optional[int]
 
+
+class JobStatusTriggerModel(SQLModel, table=True):
+    __tablename__ = 'jobstatus_triggers'
+    id: Optional[int] = Field(default=None, primary_key=True)
+    on_job_id: int
+    on_job_status: str
+    trigger_job_id: int
+
+
 def create_tables(engine):
     SQLModel.metadata.create_all(engine)
     
