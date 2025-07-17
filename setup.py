@@ -12,8 +12,9 @@ setup(
     packages=find_packages(exclude=('tests', 'tests.*')),
     package_data={
         'schds': [
-            'migrations/*', 
-            'migrations/versions/*', 
+            'migrations/*',
+            'migrations/versions/*',
+            'web_templates/*.html',
         ]
     },
     include_package_data=True,

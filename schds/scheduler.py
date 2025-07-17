@@ -90,6 +90,10 @@ class SchdsScheduler:
             session.refresh(worker)
             return worker
         
+    def get_all_workers(self):
+        with get_session() as session:
+            return session.exec(select(WorkerModel)).all()
+        
     def find_worker(self, name):
         with get_session() as session:
             statement = select(WorkerModel).where(WorkerModel.name == name)
@@ -142,6 +146,11 @@ class SchdsScheduler:
     def get_job(self, job_id:int) -> JobModel:
         return self._jobs.get(job_id)
 
+    def get_all_jobs(self):
+        with get_session() as session:
+            return session.exec(select(JobModel).where(JobModel.active == True)).all()
+        
+
     def subscribe_worker_events(self, worker_name, subscriber):
         if len(self.worker_event_subscribers[worker_name]) >= 1:
             # do not support more than one subscription at the time.
@@ -152,6 +161,10 @@ class SchdsScheduler:
             worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
             if worker is None:
                 raise ValueError('worker not found.')
+            
+            worker.status = 'online'
+            session.add(worker)
+            session.commit()
             
             inqueue_instances = session.exec(select(JobInstanceModel).where(JobInstanceModel.worker_id == worker.id,
                                                                             JobInstanceModel.status == 'INQUEUE')).all()

@@ -19,6 +19,18 @@ class MainHandler(tornado.web.RequestHandler):
         self.write("Hello, world")
 
 
+class WebViewBase(tornado.web.RequestHandler):
+    @property
+    def scheduler(self) -> SchdsScheduler:
+        return self.settings['scheduler']
+
+
+class WorkersView(WebViewBase):
+    def get(self):
+        workers = self.scheduler.get_all_workers()
+        self.render("workers.html", workers=workers)
+
+
 class JSONHandler(tornado.web.RequestHandler):
     def _return_response(self, request, message_to_be_returned: dict, status_code):
         """
@@ -233,8 +245,11 @@ def make_app(scheduler):
     job_name_ptrn = r'(?P<job_name>[a-zA-Z][a-zA-Z0-9_]{0,35})'
     job_instance_ptrn = r'(?P<job_instance_id>\d+)'
 
+    template_dir = os.path.join(os.path.dirname(__file__), "web_templates")
+
     return tornado.web.Application([
         (r"/", MainHandler),
+        (r'/workers', WorkersView),
         (f"/api/workers/{worker_name_ptrn}", RegisterWorkerHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}", RegisterJobHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}:fire", FireJobHandler),
@@ -243,7 +258,9 @@ def make_app(scheduler):
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/{job_instance_ptrn}/log", UpdateInstanceLogHandler),
         (f"/api/workers/{worker_name_ptrn}/eventstream", WorkerEventsHandler),
         (f"/wsapi/workers/{worker_name_ptrn}/events", WorkerWSEventsHandler), 
-    ], scheduler=scheduler)
+    ],
+    template_path=template_dir,
+    scheduler=scheduler)
 
 
 class SchdServer:

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Workers List</title>
+</head>
+<body>
+    <h1>All Workers</h1>
+    <table border="1">
+        <tr>
+            <th>Id</th>
+            <th>Name</th>
+            <th>Status</th>
+        </tr>
+        {% for worker in workers %}
+        <tr>
+            <td><a href="/workers/{{ worker.id }}">{{ worker.id }}</a></td>
+            <td><a href="/workers/{{ worker.id }}">{{ worker.name }}</a></td>
+            <td>{{ worker.status }}</td>
+        </tr>
+        {% end %}
+    </table>
+</body>
+</html>
