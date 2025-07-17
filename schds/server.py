@@ -128,6 +128,40 @@ class FireJobHandler(JSONHandler):
         }, 200)
 
 
+class JobTriggersHandler(JSONHandler):
+    """
+    /api/workers/{worker_name}/jobs/{job_name}/triggers
+    """
+    def post(self, worker_name, job_name):
+        request_payload:dict = tornado.escape.json_decode(self.request.body)
+        scheduler:"SchdsScheduler" = self.settings['scheduler']
+        worker = scheduler.find_worker(worker_name)
+        if not worker:
+            return self._return_response(self, {'error': 'worker not found'}, 404)
+        
+        target_job = scheduler.find_job(worker.id, job_name)
+        if not target_job:
+            return self._return_response(self, {'error': 'job not found'}, 404)
+        
+        on_job_name = request_payload['on_job_name']
+        on_job_worker_name = request_payload.get('on_worker_name', worker_name)
+        on_job_status = request_payload['on_job_status']
+
+        on_worker = scheduler.find_worker(on_job_worker_name)
+        if not on_worker:
+            return self._return_response(self, {'error': 'invalid on_worker_name'}, 404)
+        
+        on_job = scheduler.find_job(on_worker.id, on_job_name)
+        if not on_job:
+            return self._return_response(self, {'error': 'invalid on_job_name'}, 404)
+        
+        trigger = scheduler.add_job_result_trigger(on_job, target_job, on_job_status)
+        self._return_response(self, {
+            # 'trigger_id': trigger.id,
+            'target_job_name': target_job.name,
+        }, 200)
+
+
 class UpdateJobHandler(JSONHandler):
     def put(self, worker_name, job_name, job_instance_id):
         scheduler:"SchdsScheduler" = self.settings['scheduler']
@@ -204,6 +238,7 @@ def make_app(scheduler):
         (f"/api/workers/{worker_name_ptrn}", RegisterWorkerHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}", RegisterJobHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}:fire", FireJobHandler),
+        (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/triggers", JobTriggersHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/{job_instance_ptrn}", UpdateJobHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}/{job_instance_ptrn}/log", UpdateInstanceLogHandler),
         (f"/api/workers/{worker_name_ptrn}/eventstream", WorkerEventsHandler),
@@ -247,7 +282,10 @@ class SchdServer:
             # On Windows, fallback: handle KeyboardInterrupt manually
             logger.warning('loop.add_signal_handler not implemented')
 
-        await stop_event.wait()
+        try:
+            await stop_event.wait()
+        except KeyboardInterrupt:
+            logger.info("Received KeyboardInterrupt, exiting.")
         server.stop()
         await asyncio.sleep(1)  # Graceful shutdown delay
 
@@ -256,10 +294,17 @@ async def main():
     server_config = read_config()
     logging.basicConfig(level=logging.DEBUG)
     server = SchdServer(server_config)
-    await server.run()
+    try:
+        await server.run()
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt, shutting down.")
 
 if __name__ == "__main__":
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-    asyncio.run(main())
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            logger.info("Received KeyboardInterrupt, exiting.")
+    else:
+        asyncio.run(main())

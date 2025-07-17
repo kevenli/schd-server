@@ -33,17 +33,16 @@ class SchdsScheduler:
         self._inner_scheduler = AsyncIOScheduler()
         self.job_result_triggers:Dict[int, List[JobResultTrigger]] = defaultdict(list)
         self._jobs:Dict[int, JobModel] = dict()
-        
+
     def init(self):
-        with get_session() as session:
-            for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
-                self._jobs[job.id] = job
-
-                self._schedule_job(job)
-
-            for job_status_trigger in session.exec(select(JobStatusTriggerModel)).all():
-                self.place_job_result_trigger(job_status_trigger)
-
+         with get_session() as session:
+             for job in session.exec(select(JobModel).where(JobModel.active == True)).all():
+                 self._jobs[job.id] = job
+                 self._schedule_job(job)
+ 
+             for job_status_trigger in session.exec(select(JobStatusTriggerModel)).all():
+                 self.place_job_result_trigger(job_status_trigger)
+        
     def start(self):
         # to know job next_run_time, it has to start scheduler first.
         self._inner_scheduler.start()
@@ -71,7 +70,13 @@ class SchdsScheduler:
             return
 
         job_obj = self._inner_scheduler.add_job(self.fire_job2, cron_trigger, kwargs={'job':job}, id=job_id)
-        logger.info('job added %s, next wakeup time %s', job.id, job_obj.next_run_time)
+        
+        try:
+            next_run_time = job_obj.next_run_time
+        except AttributeError:
+            # cannot be `next_run_time` if scheduler is not started.
+            next_run_time = None
+        logger.info('job added %s, next wakeup time %s', job.id, next_run_time)
 
     def update_worker(self, name):
         with get_session() as session:
@@ -83,6 +88,13 @@ class SchdsScheduler:
             session.add(worker)
             session.commit()
             session.refresh(worker)
+            return worker
+        
+    def find_worker(self, name):
+        with get_session() as session:
+            statement = select(WorkerModel).where(WorkerModel.name == name)
+            result = session.exec(statement)
+            worker = result.first()
             return worker
         
     def add_job(self, worker_name, job_name, cron, timezone=None):
@@ -119,6 +131,16 @@ class SchdsScheduler:
 
             self._schedule_job(job)
             return job
+        
+    def find_job(self, worker_id, job_name):
+        with get_session() as session:
+            statement = select(JobModel).where(JobModel.worker_id == worker_id, JobModel.name == job_name)
+            result = session.exec(statement)
+            job = result.first()
+            return job
+    
+    def get_job(self, job_id:int) -> JobModel:
+        return self._jobs.get(job_id)
 
     def subscribe_worker_events(self, worker_name, subscriber):
         if len(self.worker_event_subscribers[worker_name]) >= 1:
@@ -248,24 +270,21 @@ class SchdsScheduler:
                     self.fire_job2(trigger.fire_job)
 
             return obj
-        
-    def find_job(self, worker_name:str, job_name:str) -> JobModel:
-        with get_session() as session:
-            worker = session.exec(select(WorkerModel).where(WorkerModel.name == worker_name)).first()
-            if worker is None:
-                raise ValueError('worker not found.')
-            
-            job = session.exec(select(JobModel).where(JobModel.worker_id==worker.id, JobModel.name == job_name)).first()
-            return job
-        
-    def get_job(self, job_id:int) -> JobModel:
-        return self._jobs.get(job_id)
 
     def add_job_result_trigger(self, on_job:JobModel, fire_job:JobModel, on_job_result_status:str):
         if not on_job_result_status in ['[ANY]', 'COMPLETED', 'FAILED']:
             raise ValueError('invalid status')
 
         with get_session() as session:
+            exist_trigger = session.exec(select(JobStatusTriggerModel).where(
+                JobStatusTriggerModel.on_job_id == on_job.id,
+                JobStatusTriggerModel.fire_job_id == fire_job.id,
+                JobStatusTriggerModel.on_job_status == on_job_result_status
+            )).first()
+
+            if exist_trigger:
+                return exist_trigger
+
             trigger_model = JobStatusTriggerModel(on_job_id=on_job.id, fire_job_id=fire_job.id, on_job_status=on_job_result_status)
             session.add(trigger_model)
             session.commit()
