@@ -1,5 +1,5 @@
 # build
-FROM python:3.9-slim-buster AS builder
+FROM python:3.9-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -21,7 +21,7 @@ ADD setup.py /app_src/
 RUN pip install .
 
 # run 
-FROM python:3.9-slim-buster
+FROM python:3.9-slim-bullseye
 RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
