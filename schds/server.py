@@ -159,6 +159,23 @@ class RegisterJobHandler(JSONHandler):
             'timezone': new_job.timezone,
             'active': new_job.active,
         }, 200)
+    
+    def get(self, worker_name, job_name):
+        scheduler:"SchdsScheduler" = self.settings['scheduler']
+        worker = scheduler.find_worker(worker_name)
+        if not worker:
+            return self._return_response(self, {'error': 'worker not found'}, 404)
+        
+        job = scheduler.find_job(worker.id, job_name)
+        if not job:
+            return self._return_response(self, {'error': 'job not found'}, 404)
+        
+        return self._return_response(self, {
+            'name': job.name,
+            'cron': job.cron,
+            'timezone': job.timezone,
+            'active': job.active,
+        }, 200)
 
 
 class WorkerEventsHandler(tornado.web.RequestHandler):
