@@ -26,9 +26,46 @@ class WebViewBase(tornado.web.RequestHandler):
 
 
 class WorkersView(WebViewBase):
+    """
+    /workers
+    """
     def get(self):
         workers = self.scheduler.get_all_workers()
         self.render("workers.html", workers=workers)
+
+
+class AllJobsView(WebViewBase):
+    def get(self):
+        jobs = self.scheduler.get_all_jobs()
+        job_trigger_counts = {}
+        job_last_instances = {}
+        for job in jobs:
+            job_trigger_counts[job.id] = len(self.scheduler.get_job_triggers(job.id))
+            job_last_instances[job.id] = self.scheduler.get_job_last_instance(job.id)
+        self.render('jobs.html',
+                    jobs=jobs,
+                    job_trigger_counts=job_trigger_counts,
+                    job_last_instances=job_last_instances)
+        
+
+class FireJobView(WebViewBase):
+    def post(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        if not job:
+            self.set_status(404, 'job not found')
+            return self.write_error(404)
+        
+        self.scheduler.fire_job2(job)
+
+
+class JobInstanceLogView(WebViewBase):
+    def get(self, job_id, job_instance_id):
+        job_dir = f'joblog/{job_instance_id}'
+
+        job_filepath = os.path.join(job_dir, 'output.txt')
+        with open(job_filepath, "r") as f:
+            self.write(f.read())
 
 
 class JSONHandler(tornado.web.RequestHandler):
@@ -250,6 +287,9 @@ def make_app(scheduler):
     return tornado.web.Application([
         (r"/", MainHandler),
         (r'/workers', WorkersView),
+        (r'/jobs', AllJobsView),
+        (r'/jobs/(\d+)/instances/(\d+)/log', JobInstanceLogView),
+        (r'/jobs/(\d+)/fire', FireJobView),
         (f"/api/workers/{worker_name_ptrn}", RegisterWorkerHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}", RegisterJobHandler),
         (f"/api/workers/{worker_name_ptrn}/jobs/{job_name_ptrn}:fire", FireJobHandler),

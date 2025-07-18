@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jobs</title>
+</head>
+<body>
+    <h1>Jobs</h1>
+    <table border="1">
+        <tr>
+            <th>Id</th>
+            <th>name</th>
+            <th>active</th>
+            <th>cron</th>
+            <th>worker_id</th>
+            <th>triggers</th>
+            <th>last run</th>
+            <th>last result</th>
+            <th></th>
+        </tr>
+        {% for job in jobs %}
+        <tr>
+            <td><a href="/jobs/{{ job.id }}">{{ job.id }}</a></td>
+            <td><a href="/jobs/{{ job.id }}">{{ job.name }}</a></td>
+            <td>{{ job.active }}</td>
+            <td>{{ job.cron }}</td>
+            <td>{{ job.worker_id }}</td>
+            <td><a href="/jobs/{{ job.id }}/triggers">{{ job_trigger_counts[job.id] }}</a></td>
+            <td>
+                {% if job_last_instances[job.id] %}
+                    <a target="_blank" href="/jobs/{{job.id}}/instances/{{job_last_instances[job.id].id}}/log">
+                        {{job_last_instances[job.id].start_time}}
+                    </a>
+                {% end %}
+            </td>
+            <td>
+                {% if job_last_instances[job.id] %}
+                    {{job_last_instances[job.id].status}}
+                {% end %}
+            </td>
+            <td>
+                <form method="POST" action="/jobs/{{job.id}}/fire">
+                    <button type="submit">fire now</button>
+                </form>
+            </td>
+        </tr>
+        {% end %}
+    </table>
+</body>
+</html>

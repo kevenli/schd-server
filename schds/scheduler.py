@@ -4,7 +4,7 @@ from datetime import datetime
 import logging
 from typing import Dict, List
 
-from sqlmodel import select
+from sqlmodel import desc, select
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -90,7 +90,7 @@ class SchdsScheduler:
             session.refresh(worker)
             return worker
         
-    def get_all_workers(self):
+    def get_all_workers(self) -> List[JobModel]:
         with get_session() as session:
             return session.exec(select(WorkerModel)).all()
         
@@ -149,7 +149,6 @@ class SchdsScheduler:
     def get_all_jobs(self):
         with get_session() as session:
             return session.exec(select(JobModel).where(JobModel.active == True)).all()
-        
 
     def subscribe_worker_events(self, worker_name, subscriber):
         if len(self.worker_event_subscribers[worker_name]) >= 1:
@@ -284,7 +283,14 @@ class SchdsScheduler:
 
             return obj
 
-    def add_job_result_trigger(self, on_job:JobModel, fire_job:JobModel, on_job_result_status:str):
+    def get_job_last_instance(self, job_id:int) -> JobInstanceModel:
+        with get_session() as session:
+            return session.exec(
+                select(JobInstanceModel)\
+                .where(JobInstanceModel.job_id == job_id)\
+                .order_by(desc(JobInstanceModel.start_time))).first()
+
+    def add_job_result_trigger(self, on_job:JobModel, fire_job:JobModel, on_job_result_status:str) -> JobStatusTriggerModel:
         if not on_job_result_status in ['[ANY]', 'COMPLETED', 'FAILED']:
             raise ValueError('invalid status')
 
@@ -332,3 +338,7 @@ class SchdsScheduler:
             self.job_result_triggers[on_job.id].remove(existing_trigger)
 
         self.job_result_triggers[on_job.id].append(trigger)
+
+    def get_job_triggers(self, job_id) -> List[JobStatusTriggerModel]:
+        with get_session() as session:
+            return session.exec(select(JobStatusTriggerModel).where(JobStatusTriggerModel.fire_job_id == job_id)).all()
