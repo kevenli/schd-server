@@ -1,0 +1,49 @@
+<html>
+    <head>
+    <title>Job triggers</title>
+</head>
+<body>
+    <h1>Job {{job.name}}</h1>
+    <form method="POST">
+        <div>
+            <label>on_job</label>
+            <input name="on_job_id" />
+        </div>
+        <div>
+            <label>on_job_status</label>
+            <select name="on_job_status">
+                <option value="[ANY]">[ANY]</option>
+                <option value="COMPLETED">COMPLETED</option>
+                <option value="FAILED">FAILED</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">save</button>
+        </div>
+    </form>
+    <span>Triggers</span>
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <th>on_job_id</th>
+            <th>on_job_name</th>
+            <th>on_job_status</th>
+            <th></th>
+        </tr>
+        {% for job_trigger in job_triggers %}
+        <tr>
+            <td>{{job_trigger.id}}</td>
+            <td>{{job_trigger.on_job_id}}</td>
+            <td>{{job_trigger.on_job.name}}</td>
+            <td>{{job_trigger.on_job_status}}</td>
+            <td>
+                <form action="/jobs/{{job.id}}/triggers/delete" method="POST">
+                    <input type="hidden" name="trigger_id" value="{{job_trigger.id}}" />
+                    <button type="submit">delete</button>
+                </form>
+            </td>
+        </tr>
+        {% end %}
+    </table>
+</body>
+</html>

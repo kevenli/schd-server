@@ -10,7 +10,7 @@ import tornado.websocket
 from schds.config import read_config, SchdsConfig
 from schds.models import JobInstanceModel
 from schds.scheduler import SchdsScheduler, WorkerAlreadyOnlineException
-from schds.db import init_db, upgrade_database
+from schds.db import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,56 @@ class AllJobsView(WebViewBase):
                     job_trigger_counts=job_trigger_counts,
                     job_last_instances=job_last_instances)
         
+
+class JobInfoView(WebViewBase):
+    def get(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        job_instances = self.scheduler.get_job_recent_instances(job_id)
+        self.render('jobinfo.html',
+                    job=job,
+                    job_instances=job_instances)
+        
+
+class JobTriggersView(WebViewBase):
+    def get(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        if not job:
+            self.set_status(404, 'job not found.')
+            return self.write_error(404)
+        
+        job_triggers = self.scheduler.get_job_triggers(job_id)
+        self.render('jobtriggers.html',
+                    job=job,
+                    job_triggers=job_triggers)
+        
+    def post(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        if not job:
+            self.set_status(404, 'job not found.')
+            return self.write_error(404)
+        
+        on_job_id = int(self.get_body_argument('on_job_id'))
+        on_job_status = self.get_body_argument('on_job_status')
+        on_job = self.scheduler.get_job(on_job_id)
+        
+        trigger = self.scheduler.add_job_result_trigger(on_job=on_job, fire_job=job, on_job_result_status=on_job_status)
+        
+
+class JobTriggerDeleteView(WebViewBase):
+    def post(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        if not job:
+            self.set_status(404, 'job not found.')
+            return self.write_error(404)
+        
+        trigger_id = int(self.get_argument('trigger_id'))
+        
+        self.scheduler.delete_job_trigger(job, trigger_id)
+
 
 class FireJobView(WebViewBase):
     def post(self, job_id):
@@ -288,6 +338,9 @@ def make_app(scheduler):
         (r"/", MainHandler),
         (r'/workers', WorkersView),
         (r'/jobs', AllJobsView),
+        (r'/jobs/(\d+)', JobInfoView),
+        (r'/jobs/(\d+)/triggers', JobTriggersView),
+        (r'/jobs/(\d+)/triggers/delete', JobTriggerDeleteView),
         (r'/jobs/(\d+)/instances/(\d+)/log', JobInstanceLogView),
         (r'/jobs/(\d+)/fire', FireJobView),
         (f"/api/workers/{worker_name_ptrn}", RegisterWorkerHandler),

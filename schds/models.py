@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlmodel import SQLModel, Field
+from sqlmodel import Relationship, SQLModel, Field
 from typing import Optional
 
 class JobModel(SQLModel, table=True):
@@ -38,9 +38,11 @@ class JobInstanceModel(SQLModel, table=True):
 class JobStatusTriggerModel(SQLModel, table=True):
     __tablename__ = 'jobstatus_triggers'
     id: Optional[int] = Field(default=None, primary_key=True)
-    on_job_id: int
+    on_job_id: int = Field(foreign_key="jobs.id")
     on_job_status: str
-    fire_job_id: int
+    fire_job_id: int = Field(foreign_key="jobs.id")
+    on_job: JobModel = Relationship(sa_relationship_kwargs={"lazy":"selectin", "foreign_keys":"JobStatusTriggerModel.on_job_id"})
+    fire_job: JobModel = Relationship(sa_relationship_kwargs={"foreign_keys":"JobStatusTriggerModel.fire_job_id"})
 
 
 def create_tables(engine):

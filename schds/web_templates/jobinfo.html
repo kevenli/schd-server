@@ -1,0 +1,31 @@
+<html>
+    <head>
+    <title>Job info</title>
+</head>
+<body>
+    <h1>Job {{job.name}}</h1>
+    <span>History</span>
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <th>status</th>
+            <th>start_time</th>
+            <th>stop_time</th>
+            <th>ret_code</th>
+            <th>log</th>
+        </tr>
+        {% for job_instance in job_instances %}
+        <tr>
+            <td>{{job_instance.id}}</td>
+            <td>{{job_instance.status}}</td>
+            <td>{{job_instance.start_time}}</td>
+            <td>{{job_instance.stop_time}}</td>
+            <td>{{job_instance.ret_code}}</td>
+            <td>
+                <a href="/jobs/{{job_instance.job_id}}/instances/{{job_instance.id}}/log">log</a>
+            </td>
+        </tr>
+        {% end %}
+    </table>
+</body>
+</html>
