@@ -59,3 +59,61 @@ class SchdsSchedulerJobResultTriggerTest(unittest.TestCase):
             self.assertEqual(task2.id, observer.events[0][1].id)
             observer.events.pop(0)
             target.unsubscribe_worker_events(worker_name, observer)
+
+
+
+class AddDeleteJobTest(unittest.TestCase):
+    def setUp(self):
+        if os.path.exists('tests/schds_test.db'):
+            os.remove('tests/schds_test.db')
+
+        init_db('sqlite:///tests/schds_test.db', auto_upgrade=True)
+
+    def test_add_job(self):
+        target = SchdsScheduler()
+        target.init()
+        worker_name = 'worker'
+        worker = target.update_worker(worker_name)
+        observer = SchdsSchedulerJobResultTriggerTest.WorkerObserver()
+        target.subscribe_worker_events(worker_name, observer)
+        self.assertEqual(0, len(observer.events))
+        task1 = target.add_job(worker_name, 'task1', '')
+
+        actual = target.get_job(task1.id)
+
+        self.assertEqual(task1, actual)
+
+    def test_delete_job(self):
+        target = SchdsScheduler()
+        target.init()
+        worker_name = 'worker'
+        worker = target.update_worker(worker_name)
+        observer = SchdsSchedulerJobResultTriggerTest.WorkerObserver()
+        target.subscribe_worker_events(worker_name, observer)
+        self.assertEqual(0, len(observer.events))
+        task1 = target.add_job(worker_name, 'task_to_delete', '')
+
+        target.delete_job(task1)
+
+        actual = target.get_job(task1.id)
+        self.assertIsNone(actual)
+
+    def test_delete_job_with_trigger(self):
+        target = SchdsScheduler()
+        target.init()
+        worker_name = 'worker'
+        worker = target.update_worker(worker_name)
+        observer = SchdsSchedulerJobResultTriggerTest.WorkerObserver()
+        target.subscribe_worker_events(worker_name, observer)
+        self.assertEqual(0, len(observer.events))
+        task1 = target.add_job(worker_name, 'task1', '')
+        task2 = target.add_job(worker_name, 'task2', '')
+        trigger = target.add_job_result_trigger(task1, task2, 'COMPLETED')
+
+        target.delete_job(task1)
+
+        actual = target.get_job(task1.id)
+        self.assertIsNone(actual)
+
+        self.assertListEqual(target.get_job_triggers(task1.id), [])
+        self.assertListEqual(target.get_job_triggers(task2.id), [])

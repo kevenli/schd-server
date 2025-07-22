@@ -58,6 +58,13 @@ class JobInfoView(WebViewBase):
                     job_instances=job_instances)
         
 
+class DeleteJobView(WebViewBase):
+    def post(self, job_id):
+        job_id = int(job_id)
+        job = self.scheduler.get_job(job_id)
+        self.scheduler.delete_job(job)
+        
+
 class JobTriggersView(WebViewBase):
     def get(self, job_id):
         job_id = int(job_id)
@@ -356,6 +363,7 @@ def make_app(scheduler):
         (r'/workers', WorkersView),
         (r'/jobs', AllJobsView),
         (r'/jobs/(\d+)', JobInfoView),
+        (r'/jobs/(\d+)/delete', DeleteJobView),
         (r'/jobs/(\d+)/triggers', JobTriggersView),
         (r'/jobs/(\d+)/triggers/delete', JobTriggerDeleteView),
         (r'/jobs/(\d+)/instances/(\d+)/log', JobInstanceLogView),

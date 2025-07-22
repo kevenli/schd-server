@@ -4,7 +4,7 @@ from datetime import datetime
 import logging
 from typing import Dict, List
 
-from sqlmodel import desc, select
+from sqlmodel import desc, select, delete
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -135,7 +135,22 @@ class SchdsScheduler:
 
             self._schedule_job(job)
             return job
-        
+
+    def delete_job(self, job):
+        with get_session() as session:
+            job_id_str = str(job.id)
+            session.exec(delete(JobStatusTriggerModel).where(JobStatusTriggerModel.fire_job_id==job.id))
+            session.exec(delete(JobStatusTriggerModel).where(JobStatusTriggerModel.on_job_id==job.id))
+            exist_job = self._inner_scheduler.get_job(job_id=job_id_str)
+            if exist_job:
+                self._inner_scheduler.remove_job(job_id=job_id_str)
+
+            self._jobs.pop(job.id)
+
+            session.delete(job)
+            session.commit()
+            logger.info('job %d deleted.', job.id)
+
     def find_job(self, worker_id, job_name):
         with get_session() as session:
             statement = select(JobModel).where(JobModel.worker_id == worker_id, JobModel.name == job_name)

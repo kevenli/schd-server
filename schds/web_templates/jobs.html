@@ -41,6 +41,9 @@
                 <form method="POST" action="/jobs/{{job.id}}/fire">
                     <button type="submit">fire now</button>
                 </form>
+                <form method="POST" action="/jobs/{{job.id}}/delete">
+                    <button type="submit">delete</button>
+                </form>
             </td>
         </tr>
         {% end %}
