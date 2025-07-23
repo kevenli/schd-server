@@ -7,7 +7,7 @@ def read_requirements():
 
 setup(
     name="schd-server",
-    version="0.0.4",
+    version="0.0.5",
     url="https://github.com/kevenli/schd-server",
     packages=find_packages(exclude=('tests', 'tests.*')),
     package_data={
