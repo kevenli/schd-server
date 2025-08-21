@@ -190,6 +190,12 @@ class WorkerEventsHandler(tornado.web.RequestHandler):
         worker_name = self.worker_name = self.path_kwargs["worker_name"]
         scheduler:"SchdsScheduler" = self.settings['scheduler']
         self.queue = asyncio.Queue()
+        client_version_header = self.request.headers.get("X-SchdClient", 'schd_0.1.2')
+        client_version_number = client_version_header.split('_', 2)[1]
+        self.client_version_major = int(client_version_number.split('.')[0])
+        self.client_version_minor = int(client_version_number.split('.')[1])
+        client_ip = self.request.remote_ip
+        logger.info('WorkerEventsHandler worker_name: %s, client_version: %s, client_ip: %s', worker_name, client_version_header, client_ip)
 
         try:
             scheduler.subscribe_worker_events(worker_name, self)
@@ -214,6 +220,16 @@ class WorkerEventsHandler(tornado.web.RequestHandler):
                 # to prevent trying from a died connection forever, get with a TIMEOUT
                 event = await asyncio.wait_for(self.queue.get(), timeout=10)
             except asyncio.TimeoutError:
+                if self.client_version_major <= 0 and self.client_version_minor <= 1:
+                    # do not send heartbeat if client version <= 0.1
+                    continue
+                
+                self.write({
+                    'event_type': 'heartbeat',
+                    'data': {}
+                })
+                self.write('\n')
+                self.flush()
                 continue
 
             # event = await self.queue.get()
