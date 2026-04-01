@@ -122,6 +122,7 @@ class JobInstanceLogView(WebViewBase):
 
         job_filepath = os.path.join(job_dir, 'output.txt')
         with open(job_filepath, "r") as f:
+            self.set_header("Content-Type", "text/plain; charset=UTF-8")
             self.write(f.read())
 
 
@@ -311,7 +312,7 @@ class UpdateJobHandler(JSONHandler):
         if status == 'RUNNING':
             new_instance = scheduler.start_job_instance(job_instance, new_status=status)
             self._return_response(self, {'id': new_instance.id, 'status': new_instance.status}, 200)
-        elif status == 'COMPLETED':
+        elif status in ('COMPLETED', 'FAILED'):
             new_instance = scheduler.complete_job_instance(job_instance, status, request_payload['ret_code'])
             self._return_response(self, {'id': new_instance.id, 'status': new_instance.status}, 200)
         else:
